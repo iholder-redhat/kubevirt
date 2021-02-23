@@ -89,13 +89,16 @@ func (r *Reconciler) createOrUpdateValidatingWebhookConfiguration(webhook *admis
 	}
 
 	// Patch if old version
-	var ops []string
+	ops := []string{
+		fmt.Sprintf(testGenerationJSONPatchTemplate, cachedWebhook.ObjectMeta.Generation),
+	}
 
 	// Add Labels and Annotations Patches
 	labelAnnotationPatch, err := createLabelsAndAnnotationsPatch(&webhook.ObjectMeta)
 	if err != nil {
 		return err
 	}
+
 	ops = append(ops, labelAnnotationPatch...)
 
 	// Add Spec Patch
@@ -104,7 +107,7 @@ func (r *Reconciler) createOrUpdateValidatingWebhookConfiguration(webhook *admis
 		return err
 	}
 
-	ops = append(ops, fmt.Sprintf(`{ "op": "replace", "path": "/webhooks", "value": %s }`, string(webhooks)))
+	ops = append(ops, fmt.Sprintf(replaceWebhooksValueTemplate, string(webhooks)))
 
 	webhook, err = r.clientset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations().Patch(context.Background(), webhook.Name, types.JSONPatchType, generatePatchBytes(ops), metav1.PatchOptions{})
 	if err != nil {
@@ -188,7 +191,9 @@ func (r *Reconciler) createOrUpdateMutatingWebhookConfiguration(webhook *admissi
 	}
 
 	// Patch if old version
-	var ops []string
+	ops := []string{
+		fmt.Sprintf(testGenerationJSONPatchTemplate, cachedWebhook.ObjectMeta.Generation),
+	}
 
 	// Add Labels and Annotations Patches
 	labelAnnotationPatch, err := createLabelsAndAnnotationsPatch(&webhook.ObjectMeta)
@@ -203,7 +208,7 @@ func (r *Reconciler) createOrUpdateMutatingWebhookConfiguration(webhook *admissi
 		return err
 	}
 
-	ops = append(ops, fmt.Sprintf(`{ "op": "replace", "path": "/webhooks", "value": %s }`, string(webhooks)))
+	ops = append(ops, fmt.Sprintf(replaceWebhooksValueTemplate, string(webhooks)))
 
 	webhook, err = r.clientset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Patch(context.Background(), webhook.Name, types.JSONPatchType, generatePatchBytes(ops), metav1.PatchOptions{})
 	if err != nil {
