@@ -516,8 +516,12 @@ var _ = Describe("KubeVirt Operator", func() {
 		mockQueue.Wait()
 	}
 
-	addPodDisruptionBudget := func(podDisruptionBudget *policyv1beta1.PodDisruptionBudget) {
+	addPodDisruptionBudget := func(podDisruptionBudget *policyv1beta1.PodDisruptionBudget, kv *v1.KubeVirt) {
 		mockQueue.ExpectAdds(1)
+		if kv != nil {
+			apply.SetPodDisruptionBudgetGeneration(&kv.Status.Generations, podDisruptionBudget)
+		}
+
 		podDisruptionBudgetSource.Add(podDisruptionBudget)
 		mockQueue.Wait()
 	}
@@ -605,7 +609,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			addPod(resource)
 		case *policyv1beta1.PodDisruptionBudget:
 			injectMetadata(&obj.(*policyv1beta1.PodDisruptionBudget).ObjectMeta, config)
-			addPodDisruptionBudget(resource)
+			addPodDisruptionBudget(resource, kv)
 		case *k8sv1.Secret:
 			injectMetadata(&obj.(*k8sv1.Secret).ObjectMeta, config)
 			addSecret(resource)
@@ -639,7 +643,7 @@ var _ = Describe("KubeVirt Operator", func() {
 		addConfigMap(resource)
 	}
 
-	addPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig, apiDeployment *appsv1.Deployment, controller *appsv1.Deployment) {
+	addPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig, apiDeployment *appsv1.Deployment, controller *appsv1.Deployment, kv *v1.KubeVirt) {
 		minAvailable := intstr.FromInt(int(1))
 		apiPodDisruptionBudget := &policyv1beta1.PodDisruptionBudget{
 			ObjectMeta: metav1.ObjectMeta{
@@ -653,7 +657,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			},
 		}
 		injectMetadata(&apiPodDisruptionBudget.ObjectMeta, config)
-		addPodDisruptionBudget(apiPodDisruptionBudget)
+		addPodDisruptionBudget(apiPodDisruptionBudget, kv)
 		controllerPodDisruptionBudget := &policyv1beta1.PodDisruptionBudget{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: controller.Namespace,
@@ -666,13 +670,14 @@ var _ = Describe("KubeVirt Operator", func() {
 			},
 		}
 		injectMetadata(&controllerPodDisruptionBudget.ObjectMeta, config)
-		addPodDisruptionBudget(controllerPodDisruptionBudget)
+		addPodDisruptionBudget(controllerPodDisruptionBudget, kv)
 	}
 
 	addPodsWithIndividualConfigs := func(config *util.KubeVirtDeploymentConfig,
 		configController *util.KubeVirtDeploymentConfig,
 		configHandler *util.KubeVirtDeploymentConfig,
-		shouldAddPodDisruptionBudgets bool) {
+		shouldAddPodDisruptionBudgets bool,
+		kv *v1.KubeVirt) {
 		// we need at least one active pod for
 		// virt-api
 		// virt-controller
@@ -724,16 +729,16 @@ var _ = Describe("KubeVirt Operator", func() {
 		addPod(pod)
 
 		if shouldAddPodDisruptionBudgets {
-			addPodDisruptionBudgets(config, apiDeployment, controller)
+			addPodDisruptionBudgets(config, apiDeployment, controller, kv)
 		}
 	}
 
-	addPodsWithOptionalPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig, shouldAddPodDisruptionBudgets bool) {
-		addPodsWithIndividualConfigs(config, config, config, shouldAddPodDisruptionBudgets)
+	addPodsWithOptionalPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig, shouldAddPodDisruptionBudgets bool, kv *v1.KubeVirt) {
+		addPodsWithIndividualConfigs(config, config, config, shouldAddPodDisruptionBudgets, kv)
 	}
 
-	addPodsAndPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig) {
-		addPodsWithOptionalPodDisruptionBudgets(config, true)
+	addPodsAndPodDisruptionBudgets := func(config *util.KubeVirtDeploymentConfig, kv *v1.KubeVirt) {
+		addPodsWithOptionalPodDisruptionBudgets(config, true, kv)
 	}
 
 	generateRandomResources := func() int {
@@ -1285,6 +1290,12 @@ var _ = Describe("KubeVirt Operator", func() {
 		return true, &appsv1.DaemonSet{}, nil
 	}
 
+	podDisruptionBudgetPatchFunc := func(action testing.Action) (handled bool, obj runtime.Object, err error) {
+		genericPatchFunc(action)
+
+		return true, &policyv1beta1.PodDisruptionBudget{}, nil
+	}
+
 	genericCreateFunc := func(action testing.Action) (handled bool, obj runtime.Object, err error) {
 		create, ok := action.(testing.CreateAction)
 		Expect(ok).To(BeTrue())
@@ -1374,7 +1385,7 @@ var _ = Describe("KubeVirt Operator", func() {
 		kubeClient.Fake.PrependReactor("patch", "services", genericPatchFunc)
 		kubeClient.Fake.PrependReactor("patch", "daemonsets", daemonsetPatchFunc)
 		kubeClient.Fake.PrependReactor("patch", "deployments", deploymentPatchFunc)
-		kubeClient.Fake.PrependReactor("patch", "poddisruptionbudgets", genericPatchFunc)
+		kubeClient.Fake.PrependReactor("patch", "poddisruptionbudgets", podDisruptionBudgetPatchFunc)
 		secClient.Fake.PrependReactor("update", "securitycontextconstraints", genericUpdateFunc)
 		promClient.Fake.PrependReactor("patch", "servicemonitors", genericPatchFunc)
 		promClient.Fake.PrependReactor("patch", "prometheusrules", genericPatchFunc)
@@ -1536,10 +1547,11 @@ var _ = Describe("KubeVirt Operator", func() {
 			shouldExpectCreations()
 			addInstallStrategy(defaultConfig)
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 			makeHandlerReady()
 			makeApiAndControllerReady()
 			makeHandlerReady()
+			shouldExpectPatchesAndUpdates()
 
 			// Now when the controller runs, if the namespace will be patched, the test will fail
 			// because the patch is not expected here.
@@ -1600,10 +1612,11 @@ var _ = Describe("KubeVirt Operator", func() {
 
 			fakeNamespaceModificationEvent()
 			shouldExpectNamespacePatch()
+			shouldExpectPatchesAndUpdates()
 			addAll(customConfig, kv)
 			// install strategy config
 			addInstallStrategy(customConfig)
-			addPodsAndPodDisruptionBudgets(customConfig)
+			addPodsAndPodDisruptionBudgets(customConfig, kv)
 
 			makeApiAndControllerReady()
 			makeHandlerReady()
@@ -1642,13 +1655,15 @@ var _ = Describe("KubeVirt Operator", func() {
 			addDummyValidationWebhook()
 			addInstallStrategy(defaultConfig)
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 			makeApiAndControllerReady()
 			makeHandlerReady()
 
 			shouldExpectDeletions()
 			fakeNamespaceModificationEvent()
 			shouldExpectNamespacePatch()
+			shouldExpectPatchesAndUpdates()
+			shouldExpectKubeVirtUpdateStatus(1)
 
 			controller.Execute()
 			Expect(totalDeletions).To(Equal(1))
@@ -1680,12 +1695,14 @@ var _ = Describe("KubeVirt Operator", func() {
 			addKubeVirt(kv)
 			addInstallStrategy(defaultConfig)
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 			makeApiAndControllerReady()
 			makeHandlerReady()
 
 			fakeNamespaceModificationEvent()
 			shouldExpectNamespacePatch()
+			shouldExpectPatchesAndUpdates()
+			shouldExpectKubeVirtUpdateStatus(1)
 
 			controller.Execute()
 
@@ -1721,7 +1738,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			addKubeVirt(kv)
 			addInstallStrategy(defaultConfig)
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 			makeApiAndControllerReady()
 			makeHandlerReady()
 
@@ -1747,6 +1764,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			Expect(resourceChanges["validatingwebhookconfigurations"][Patched]).To(Equal(resourceChanges["validatingwebhookconfigurations"][Added]))
 			Expect(resourceChanges["deployements"][Patched]).To(Equal(resourceChanges["deployements"][Added]))
 			Expect(resourceChanges["daemonsets"][Patched]).To(Equal(resourceChanges["daemonsets"][Added]))
+			Expect(resourceChanges["poddisruptionbudgets"][Patched]).To(Equal(resourceChanges["poddisruptionbudgets"][Added]))
 		}, 15)
 
 		It("should delete operator managed resources not in the deployed installstrategy", func() {
@@ -1776,7 +1794,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			addInstallStrategy(defaultConfig)
 			addAll(defaultConfig, kv)
 			numResources := generateRandomResources()
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 
 			makeApiAndControllerReady()
 			makeHandlerReady()
@@ -1784,6 +1802,8 @@ var _ = Describe("KubeVirt Operator", func() {
 			shouldExpectDeletions()
 			fakeNamespaceModificationEvent()
 			shouldExpectNamespacePatch()
+			shouldExpectPatchesAndUpdates()
+			shouldExpectKubeVirtUpdateStatus(1)
 
 			controller.Execute()
 			Expect(totalDeletions).To(Equal(numResources))
@@ -2146,7 +2166,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			addInstallStrategy(rollbackConfig)
 
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 
 			makeApiAndControllerReady()
 			makeHandlerReady()
@@ -2210,7 +2230,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			addInstallStrategy(updatedConfig)
 
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 
 			makeApiAndControllerReady()
 			makeHandlerReady()
@@ -2276,7 +2296,7 @@ var _ = Describe("KubeVirt Operator", func() {
 			addAll(defaultConfig, kv)
 			// Create virt-api and virt-controller under defaultConfig,
 			// but use updatedConfig for virt-handler (hack) to avoid pausing after daemonsets
-			addPodsWithIndividualConfigs(defaultConfig, defaultConfig, updatedConfig, true)
+			addPodsWithIndividualConfigs(defaultConfig, defaultConfig, updatedConfig, true, kv)
 
 			makeApiAndControllerReady()
 			makeHandlerReady()
@@ -2334,12 +2354,12 @@ var _ = Describe("KubeVirt Operator", func() {
 			addInstallStrategy(updatedConfig)
 
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 
 			// pods for the new version are added so this test won't
 			// wait for daemonsets to rollover before updating/patching
 			// all resources.
-			addPodsWithOptionalPodDisruptionBudgets(updatedConfig, false)
+			addPodsWithOptionalPodDisruptionBudgets(updatedConfig, false, kv)
 
 			makeApiAndControllerReady()
 			makeHandlerReady()
@@ -2396,12 +2416,12 @@ var _ = Describe("KubeVirt Operator", func() {
 			addInstallStrategy(updatedConfig)
 
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 
 			// pods for the new version are added so this test won't
 			// wait for daemonsets to rollover before updating/patching
 			// all resources.
-			addPodsWithOptionalPodDisruptionBudgets(updatedConfig, false)
+			addPodsWithOptionalPodDisruptionBudgets(updatedConfig, false, kv)
 
 			makeApiAndControllerReady()
 			makeHandlerReady()
@@ -2468,12 +2488,12 @@ var _ = Describe("KubeVirt Operator", func() {
 			addInstallStrategy(updatedConfig)
 
 			addAll(defaultConfig, kv)
-			addPodsAndPodDisruptionBudgets(defaultConfig)
+			addPodsAndPodDisruptionBudgets(defaultConfig, kv)
 
 			// pods for the new version are added so this test won't
 			// wait for daemonsets to rollover before updating/patching
 			// all resources.
-			addPodsWithOptionalPodDisruptionBudgets(updatedConfig, false)
+			addPodsWithOptionalPodDisruptionBudgets(updatedConfig, false, kv)
 
 			makeApiAndControllerReady()
 			makeHandlerReady()
