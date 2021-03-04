@@ -481,7 +481,7 @@ var _ = Describe("KubeVirt Operator", func() {
 	addValidatingWebhook := func(wh *admissionregistrationv1beta1.ValidatingWebhookConfiguration, kv *v1.KubeVirt) {
 		mockQueue.ExpectAdds(1)
 		if kv != nil {
-			apply.SetValidatingWebhookConfigurationGeneration(&kv.Status.Generations, wh)
+			apply.SetGeneration(&kv.Status.Generations, wh)
 		}
 
 		validatingWebhookSource.Add(wh)
@@ -491,7 +491,7 @@ var _ = Describe("KubeVirt Operator", func() {
 	addMutatingWebhook := func(wh *admissionregistrationv1beta1.MutatingWebhookConfiguration, kv *v1.KubeVirt) {
 		mockQueue.ExpectAdds(1)
 		if kv != nil {
-			apply.SetMutatingWebhookConfigurationGeneration(&kv.Status.Generations, wh)
+			apply.SetGeneration(&kv.Status.Generations, wh)
 		}
 
 		mutatingWebhookSource.Add(wh)
@@ -519,7 +519,7 @@ var _ = Describe("KubeVirt Operator", func() {
 	addPodDisruptionBudget := func(podDisruptionBudget *policyv1beta1.PodDisruptionBudget, kv *v1.KubeVirt) {
 		mockQueue.ExpectAdds(1)
 		if kv != nil {
-			apply.SetPodDisruptionBudgetGeneration(&kv.Status.Generations, podDisruptionBudget)
+			apply.SetGeneration(&kv.Status.Generations, podDisruptionBudget)
 		}
 
 		podDisruptionBudgetSource.Add(podDisruptionBudget)

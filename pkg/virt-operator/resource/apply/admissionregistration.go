@@ -72,14 +72,14 @@ func (r *Reconciler) createOrUpdateValidatingWebhookConfiguration(webhook *admis
 			r.expectations.ValidationWebhook.LowerExpectations(r.kvKey, 1, 0)
 			return fmt.Errorf("unable to create validatingwebhook %+v: %v", webhook, err)
 		}
-		SetValidatingWebhookConfigurationGeneration(&r.kv.Status.Generations, webhook)
+		SetGeneration(&r.kv.Status.Generations, webhook)
 
 		return nil
 	}
 
 	modified := resourcemerge.BoolPtr(false)
 	existingCopy := cachedWebhook.DeepCopy()
-	expectedGeneration := ExpectedValidatingWebhookConfigurationGeneration(webhook, r.kv.Status.Generations)
+	expectedGeneration := GetExpectedGeneration(webhook, r.kv.Status.Generations)
 
 	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, webhook.ObjectMeta)
 	// there was no change to metadata, the generation was right
@@ -114,7 +114,7 @@ func (r *Reconciler) createOrUpdateValidatingWebhookConfiguration(webhook *admis
 		return fmt.Errorf("unable to update validatingwebhookconfiguration %+v: %v", webhook, err)
 	}
 
-	SetValidatingWebhookConfigurationGeneration(&r.kv.Status.Generations, webhook)
+	SetGeneration(&r.kv.Status.Generations, webhook)
 	log.Log.V(2).Infof("validatingwebhoookconfiguration %v updated", webhook.Name)
 
 	return nil
@@ -181,7 +181,7 @@ func (r *Reconciler) createOrUpdateMutatingWebhookConfiguration(webhook *admissi
 
 	modified := resourcemerge.BoolPtr(false)
 	existingCopy := cachedWebhook.DeepCopy()
-	expectedGeneration := ExpectedMutatingWebhookConfigurationGeneration(webhook, r.kv.Status.Generations)
+	expectedGeneration := GetExpectedGeneration(webhook, r.kv.Status.Generations)
 
 	resourcemerge.EnsureObjectMeta(modified, &existingCopy.ObjectMeta, webhook.ObjectMeta)
 	// there was no change to metadata, the generation was right
@@ -215,7 +215,7 @@ func (r *Reconciler) createOrUpdateMutatingWebhookConfiguration(webhook *admissi
 		return fmt.Errorf("unable to update mutatingwebhookconfiguration %+v: %v", webhook, err)
 	}
 
-	SetMutatingWebhookConfigurationGeneration(&r.kv.Status.Generations, webhook)
+	SetGeneration(&r.kv.Status.Generations, webhook)
 	log.Log.V(2).Infof("mutatingwebhoookconfiguration %v updated", webhook.Name)
 
 	return nil

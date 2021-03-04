@@ -1,6 +1,8 @@
 package apply
 
 import (
+	"fmt"
+
 	operatorsv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
@@ -8,67 +10,68 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func ExpectedMutatingWebhookConfigurationGeneration(required *admissionregistrationv1beta1.MutatingWebhookConfiguration, previousGenerations []operatorsv1.GenerationStatus) int64 {
-	generation := resourcemerge.GenerationFor(previousGenerations, schema.GroupResource{Group: "admissionregistration.k8s.io", Resource: "mutatingwebhookconfigurations"}, required.Namespace, required.Name)
-	if generation != nil {
-		return generation.LastGeneration
-	}
+// This file expands resourcemerge/apps.go file to support getting / setting generation for more types.
+// Implementation here is slightly different as it embraces code re-use.
 
-	return -1
+type NamespaceNameGenerationGetter interface {
+	GetNamespace() string
+	GetName() string
+	GetGeneration() int64
 }
 
-func SetMutatingWebhookConfigurationGeneration(generations *[]operatorsv1.GenerationStatus, actual *admissionregistrationv1beta1.MutatingWebhookConfiguration) {
+func getResourceInfo(required NamespaceNameGenerationGetter) (namespace string, name string, group string, resource string, generation int64, err error) {
+
+	switch required.(type) {
+	case *admissionregistrationv1beta1.MutatingWebhookConfiguration:
+		group = "admissionregistration.k8s.io"
+		resource = "mutatingwebhookconfigurations"
+	case *admissionregistrationv1beta1.ValidatingWebhookConfiguration:
+		group = "admissionregistration.k8s.io"
+		resource = "validatingwebhookconfigurations"
+	case *v1beta1.PodDisruptionBudget:
+		group = "apps"
+		resource = "poddisruptionbudget"
+	default:
+		err = fmt.Errorf("resource type is not known")
+		return
+	}
+
+	namespace = required.GetNamespace()
+	name = required.GetName()
+	generation = required.GetGeneration()
+
+	return
+}
+
+func GetExpectedGeneration(required NamespaceNameGenerationGetter, previousGenerations []operatorsv1.GenerationStatus) int64 {
+	namespace, name, group, resource, _, err := getResourceInfo(required)
+	if err != nil {
+		return -1
+	}
+
+	generation := resourcemerge.GenerationFor(previousGenerations, schema.GroupResource{Group: group, Resource: resource}, namespace, name)
+	if generation == nil {
+		return -1
+	}
+
+	return generation.LastGeneration
+}
+
+func SetGeneration(generations *[]operatorsv1.GenerationStatus, actual NamespaceNameGenerationGetter) {
 	if actual == nil {
 		return
 	}
-	resourcemerge.SetGeneration(generations, operatorsv1.GenerationStatus{
-		Group:          "admissionregistration.k8s.io",
-		Resource:       "mutatingwebhookconfigurations",
-		Namespace:      actual.Namespace,
-		Name:           actual.Name,
-		LastGeneration: actual.ObjectMeta.Generation,
-	})
-}
 
-func ExpectedValidatingWebhookConfigurationGeneration(required *admissionregistrationv1beta1.ValidatingWebhookConfiguration, previousGenerations []operatorsv1.GenerationStatus) int64 {
-	generation := resourcemerge.GenerationFor(previousGenerations, schema.GroupResource{Group: "admissionregistration.k8s.io", Resource: "validatingwebhookconfigurations"}, required.Namespace, required.Name)
-	if generation != nil {
-		return generation.LastGeneration
-	}
-
-	return -1
-}
-
-func SetValidatingWebhookConfigurationGeneration(generations *[]operatorsv1.GenerationStatus, actual *admissionregistrationv1beta1.ValidatingWebhookConfiguration) {
-	if actual == nil {
+	namespace, name, group, resource, generation, err := getResourceInfo(actual)
+	if err != nil {
 		return
 	}
-	resourcemerge.SetGeneration(generations, operatorsv1.GenerationStatus{
-		Group:          "admissionregistration.k8s.io",
-		Resource:       "validatingwebhookconfigurations",
-		Namespace:      actual.Namespace,
-		Name:           actual.Name,
-		LastGeneration: actual.ObjectMeta.Generation,
-	})
-}
 
-func SetPodDisruptionBudgetGeneration(generations *[]operatorsv1.GenerationStatus, actual *v1beta1.PodDisruptionBudget) {
-	if actual == nil {
-		return
-	}
 	resourcemerge.SetGeneration(generations, operatorsv1.GenerationStatus{
-		Group:          "apps",
-		Resource:       "poddisruptionbudget",
-		Namespace:      actual.Namespace,
-		Name:           actual.Name,
-		LastGeneration: actual.ObjectMeta.Generation,
+		Group:          group,
+		Resource:       resource,
+		Namespace:      namespace,
+		Name:           name,
+		LastGeneration: generation,
 	})
-}
-
-func ExpectedPodDisruptionBudgetGeneration(required *v1beta1.PodDisruptionBudget, previousGenerations []operatorsv1.GenerationStatus) int64 {
-	generation := resourcemerge.GenerationFor(previousGenerations, schema.GroupResource{Group: "apps", Resource: "poddisruptionbudget"}, required.Namespace, required.Name)
-	if generation != nil {
-		return generation.LastGeneration
-	}
-	return -1
 }
