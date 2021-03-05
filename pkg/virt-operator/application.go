@@ -62,7 +62,7 @@ import (
 )
 
 const (
-	controllerThreads = 3
+	controllerThreads = 1
 
 	// Default port that virt-operator listens on.
 	defaultPort = 8186
