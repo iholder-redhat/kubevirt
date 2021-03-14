@@ -385,7 +385,7 @@ func (r *Reconciler) createOrUpdateRbac() error {
 
 	// create/update ClusterRoles
 	for _, cr := range r.targetStrategy.ClusterRoles() {
-		err := r.createOrUpdateClusterRole(cr, version, imageRegistry, id)
+		err := r.createOrUpdateRole(cr.DeepCopy(), version, imageRegistry, id, TypeClusterRole, false)
 		if err != nil {
 			return err
 		}
@@ -393,7 +393,7 @@ func (r *Reconciler) createOrUpdateRbac() error {
 
 	// create/update ClusterRoleBindings
 	for _, crb := range r.targetStrategy.ClusterRoleBindings() {
-		err := r.createOrUpdateClusterRoleBinding(crb, version, imageRegistry, id)
+		err := r.createOrUpdateRole(crb.DeepCopy(), version, imageRegistry, id, TypeClusterRoleBinding, false)
 		if err != nil {
 			return err
 		}
@@ -402,7 +402,7 @@ func (r *Reconciler) createOrUpdateRbac() error {
 
 	// create/update Roles
 	for _, role := range r.targetStrategy.Roles() {
-		err := r.createOrUpdateRole(role, version, imageRegistry, id, r.kv.Namespace)
+		err := r.createOrUpdateRole(role.DeepCopy(), version, imageRegistry, id, TypeRole, true)
 		if err != nil {
 			return err
 		}
@@ -410,7 +410,7 @@ func (r *Reconciler) createOrUpdateRbac() error {
 
 	// create/update RoleBindings
 	for _, rb := range r.targetStrategy.RoleBindings() {
-		err := r.createOrUpdateRoleBinding(rb, version, imageRegistry, id, r.kv.Namespace)
+		err := r.createOrUpdateRole(rb.DeepCopy(), version, imageRegistry, id, TypeRoleBinding, true)
 		if err != nil {
 			return err
 		}

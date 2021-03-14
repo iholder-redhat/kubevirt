@@ -339,6 +339,12 @@ var _ = Describe("KubeVirt Operator", func() {
 
 		// Make sure that all unexpected calls to kubeClient will fail
 		kubeClient.Fake.PrependReactor("*", "*", func(action testing.Action) (handled bool, obj runtime.Object, err error) {
+			r := action.GetResource().Resource
+			v := action.GetVerb()
+			n := action == nil
+			if r != "" || v != "" || n {
+
+			}
 			if action.GetVerb() == "get" && action.GetResource().Resource == "secrets" {
 				return true, nil, errors.NewNotFound(schema.GroupResource{Group: "", Resource: "secrets"}, "whatever")
 			}
